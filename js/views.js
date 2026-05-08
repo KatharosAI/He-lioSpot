@@ -114,99 +114,227 @@ const Views = {
   },
 
   compass() {
+    const optTilt = App.state.location ? Solar.optimalTilt(App.state.location.latitude) : 35;
     return `
     <div class="view view-compass">
       <div class="view-header">
         <h2>🧭 Boussole solaire</h2>
-        <p class="subtitle">Pointez votre téléphone vers la surface d'installation</p>
+        <p class="subtitle">Mesure de l'orientation et de l'inclinaison de votre surface</p>
       </div>
 
-      <div class="compass-instructions">
-        <div class="instruction-step">
-          <span class="step-num">1</span>
-          <span>Activez la boussole et positionnez-vous à l'emplacement d'installation</span>
+      <!-- ÉTAPE 0 : bouton démarrage -->
+      <div id="compass-start-screen">
+        <div class="compass-instructions">
+          <div class="instruction-step">
+            <span class="step-num">1</span>
+            <span><strong>Orientation :</strong> tenez le téléphone à la verticale, pointez-le vers votre surface. La boussole indique l'azimut.</span>
+          </div>
+          <div class="instruction-step">
+            <span class="step-num">2</span>
+            <span><strong>Inclinaison :</strong> posez le téléphone <em>à plat sur la surface</em> (toit, sol). L'inclinomètre lit l'angle automatiquement.</span>
+          </div>
+          <div class="instruction-step">
+            <span class="step-num">3</span>
+            <span><strong>Capturez</strong> chaque mesure séparément, puis passez à l'analyse.</span>
+          </div>
         </div>
-        <div class="instruction-step">
-          <span class="step-num">2</span>
-          <span>Calibrez le Nord en pointant vers le Nord géographique</span>
-        </div>
-        <div class="instruction-step">
-          <span class="step-num">3</span>
-          <span>Pointez vers votre surface (toit, sol) et capturez l'orientation</span>
-        </div>
+        <button class="btn btn-primary btn-lg" id="btn-compass-start">
+          <svg viewBox="0 0 24 24" width="20" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"/></svg>
+          Activer la boussole
+        </button>
       </div>
 
-      <button class="btn btn-primary btn-lg" id="btn-compass-start">
-        <svg viewBox="0 0 24 24" width="20"><circle cx="12" cy="12" r="10"/><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"/></svg>
-        Activer la boussole
-      </button>
-
+      <!-- ZONE LIVE (cachée jusqu'à activation) -->
       <div id="compass-live" class="compass-live hidden">
-        <div class="compass-widget">
-          <div class="compass-ring">
-            <div class="compass-labels">
-              <span class="cl cl-n">N</span>
-              <span class="cl cl-e">E</span>
-              <span class="cl cl-s">S</span>
-              <span class="cl cl-o">O</span>
+
+        <!-- ONGLETS MODE -->
+        <div class="compass-tabs">
+          <button class="ctab active" id="tab-orientation" onclick="App.switchCompassTab('orientation')">
+            🧭 Orientation
+          </button>
+          <button class="ctab" id="tab-tilt" onclick="App.switchCompassTab('tilt')">
+            📐 Inclinaison
+          </button>
+        </div>
+
+        <!-- ═══ PANNEAU ORIENTATION ═══ -->
+        <div id="panel-orientation" class="compass-panel">
+          <p class="panel-hint">📱 Tenez le téléphone <strong>vertical</strong>, pointez vers votre surface</p>
+
+          <!-- SVG Boussole : cadran tournant, ligne de visée fixe -->
+          <div class="compass-svg-wrap">
+            <svg id="compass-svg" viewBox="0 0 220 220" xmlns="http://www.w3.org/2000/svg">
+              <!-- Fond -->
+              <circle cx="110" cy="110" r="108" fill="#0d1b2a" stroke="#f5a623" stroke-width="2"/>
+              <circle cx="110" cy="110" r="90"  fill="none" stroke="rgba(245,166,35,0.1)" stroke-width="1"/>
+              <circle cx="110" cy="110" r="60"  fill="none" stroke="rgba(245,166,35,0.07)" stroke-width="1"/>
+
+              <!-- CADRAN TOURNANT (rotation = -heading) -->
+              <g id="compass-dial" style="transform-origin:110px 110px; transition:transform 0.12s linear">
+                <!-- Graduations toutes les 10° -->
+                <g id="dial-ticks"></g>
+                <!-- Points cardinaux -->
+                <text x="110" y="28"  text-anchor="middle" font-size="18" font-weight="bold" font-family="monospace" fill="#e74c3c">N</text>
+                <text x="110" y="200" text-anchor="middle" font-size="16" font-family="monospace" fill="rgba(255,255,255,0.6)">S</text>
+                <text x="196" y="115" text-anchor="middle" font-size="16" font-family="monospace" fill="rgba(255,255,255,0.6)">E</text>
+                <text x="24"  y="115" text-anchor="middle" font-size="16" font-family="monospace" fill="rgba(255,255,255,0.6)">O</text>
+                <!-- Diagonales -->
+                <text x="172" y="50"  text-anchor="middle" font-size="11" font-family="monospace" fill="rgba(255,255,255,0.35)">NE</text>
+                <text x="172" y="178" text-anchor="middle" font-size="11" font-family="monospace" fill="rgba(255,255,255,0.35)">SE</text>
+                <text x="48"  y="178" text-anchor="middle" font-size="11" font-family="monospace" fill="rgba(255,255,255,0.35)">SO</text>
+                <text x="48"  y="50"  text-anchor="middle" font-size="11" font-family="monospace" fill="rgba(255,255,255,0.35)">NO</text>
+              </g>
+
+              <!-- LIGNE DE VISÉE FIXE (triangle pointant vers le haut = direction du téléphone) -->
+              <polygon points="110,14 104,30 116,30" fill="#f5a623" opacity="0.95"/>
+              <line x1="110" y1="30" x2="110" y2="80" stroke="#f5a623" stroke-width="2.5" stroke-dasharray="4,3" opacity="0.7"/>
+
+              <!-- Centre -->
+              <circle cx="110" cy="110" r="8" fill="#1d2d44" stroke="#f5a623" stroke-width="2"/>
+              <circle cx="110" cy="110" r="3" fill="#f5a623"/>
+
+              <!-- Arc de score couleur (180° en bas) -->
+              <path id="score-arc" d="" fill="none" stroke="#7ecfab" stroke-width="6" stroke-linecap="round" opacity="0.7"/>
+            </svg>
+          </div>
+
+          <!-- Données numériques -->
+          <div class="compass-data-strip">
+            <div class="cds-item">
+              <span class="cds-label">CAP</span>
+              <span class="cds-value" id="heading-value">—°</span>
             </div>
-            <div class="compass-needle-wrap">
-              <div class="compass-needle" id="compass-needle">
-                <div class="needle-north"></div>
-                <div class="needle-south"></div>
+            <div class="cds-item cds-center">
+              <span class="cds-label">DIRECTION</span>
+              <span class="cds-value cds-dir" id="direction-label">—</span>
+            </div>
+            <div class="cds-item">
+              <span class="cds-label">SCORE</span>
+              <span class="cds-value" id="orientation-score">—</span>
+            </div>
+          </div>
+
+          <!-- Barre de qualité orientation -->
+          <div class="quality-bar-wrap">
+            <div class="quality-bar">
+              <div class="quality-fill" id="quality-fill" style="width:0%"></div>
+            </div>
+            <span class="quality-label" id="quality-label">En attente…</span>
+          </div>
+
+          <button class="btn btn-primary btn-full" id="btn-capture-azimuth">
+            📌 Capturer l'orientation
+          </button>
+          <div id="azimuth-captured" class="captured-ok hidden">
+            ✓ Orientation capturée : <strong id="az-captured-display">—</strong>
+            <button class="btn btn-ghost btn-sm" id="btn-recapture-az">Recommencer</button>
+          </div>
+        </div>
+
+        <!-- ═══ PANNEAU INCLINAISON ═══ -->
+        <div id="panel-tilt" class="compass-panel hidden">
+          <p class="panel-hint">📱 Posez le téléphone <strong>à plat sur la surface</strong> à mesurer (toit, jardin…)</p>
+
+          <!-- Inclinomètre visuel -->
+          <div class="tilt-meter-wrap">
+            <div class="tilt-meter">
+              <!-- Rapporteur visuel SVG -->
+              <svg id="tilt-svg" viewBox="0 0 280 160" xmlns="http://www.w3.org/2000/svg">
+                <!-- Fond -->
+                <rect width="280" height="160" fill="#0d1b2a" rx="12"/>
+
+                <!-- Demi-cercle rapporteur -->
+                <path d="M 40 130 A 100 100 0 0 1 240 130" fill="none" stroke="rgba(245,166,35,0.2)" stroke-width="1"/>
+
+                <!-- Graduations -->
+                <g id="tilt-graduations"></g>
+
+                <!-- Sol de référence -->
+                <line x1="30" y1="130" x2="250" y2="130" stroke="rgba(255,255,255,0.15)" stroke-width="1" stroke-dasharray="4,4"/>
+                <text x="140" y="148" text-anchor="middle" font-size="9" font-family="monospace" fill="rgba(255,255,255,0.3)">HORIZONTAL</text>
+
+                <!-- Aiguille inclinaison (tourne depuis la base) -->
+                <line id="tilt-needle" x1="140" y1="130" x2="140" y2="40" stroke="#f5a623" stroke-width="3" stroke-linecap="round"/>
+                <circle cx="140" cy="130" r="5" fill="#f5a623"/>
+
+                <!-- Ligne optimale -->
+                <line id="tilt-optimal" x1="140" y1="130" x2="140" y2="40" stroke="#7ecfab" stroke-width="1.5" stroke-dasharray="5,3" opacity="0.6"/>
+
+                <!-- Valeur en gros -->
+                <text id="tilt-big-value" x="140" y="80" text-anchor="middle" font-size="32" font-weight="bold" font-family="monospace" fill="#f5a623">—°</text>
+              </svg>
+
+              <div class="tilt-legend">
+                <span class="tl-item"><span style="color:#f5a623">━━</span> Votre surface</span>
+                <span class="tl-item"><span style="color:#7ecfab">╌╌</span> Optimale (${optTilt}°)</span>
               </div>
             </div>
           </div>
-          <div class="compass-data">
-            <div class="data-row">
-              <span class="data-label">Azimut</span>
-              <span class="data-value" id="heading-value">—°</span>
+
+          <!-- Infos textuelles inclinaison -->
+          <div class="tilt-info-grid">
+            <div class="tig-item">
+              <span class="tig-icon" id="tilt-emoji">❓</span>
+              <span class="tig-label" id="tilt-label">En attente…</span>
             </div>
-            <div class="data-row">
-              <span class="data-label">Direction</span>
-              <span class="data-value" id="direction-label">—</span>
+            <div class="tig-item">
+              <span class="tig-icon">🎯</span>
+              <span class="tig-label">Optimale pour votre latitude : <strong>${optTilt}°</strong></span>
             </div>
-            <div class="data-row">
-              <span class="data-label">Inclinaison</span>
-              <span class="data-value" id="tilt-value">—°</span>
+            <div class="tig-item" id="tilt-quality-row" style="display:none">
+              <span class="tig-icon">📊</span>
+              <span class="tig-label" id="tilt-quality-label">—</span>
             </div>
-            <div class="data-row">
-              <span class="data-label">Score expo</span>
-              <span class="score-badge" id="orientation-score">—</span>
+          </div>
+
+          <!-- Référence visuelle angles courants -->
+          <div class="tilt-reference">
+            <div class="tref-title">Références :</div>
+            <div class="tref-grid">
+              <span class="tref-item">➖ 0° plat</span>
+              <span class="tref-item">📐 15-25° faible</span>
+              <span class="tref-item">🏠 30-35° standard</span>
+              <span class="tref-item">⛰️ 45° forte pente</span>
+              <span class="tref-item">🧱 90° vertical</span>
             </div>
+          </div>
+
+          <button class="btn btn-primary btn-full" id="btn-capture-tilt">
+            📌 Capturer l'inclinaison
+          </button>
+          <div id="tilt-captured" class="captured-ok hidden">
+            ✓ Inclinaison capturée : <strong id="tilt-captured-display">—</strong>
+            <button class="btn btn-ghost btn-sm" id="btn-recapture-tilt">Recommencer</button>
           </div>
         </div>
 
-        <div class="compass-actions">
-          <button class="btn btn-secondary" id="btn-calibrate">
-            🎯 Calibrer le Nord
-          </button>
-          <button class="btn btn-primary" id="btn-capture-surface">
-            📌 Capturer la surface
-          </button>
-        </div>
-
-        <div id="surface-captured" class="surface-captured hidden">
-          <div class="captured-badge">
-            <span>✓ Surface capturée</span>
-            <strong id="surface-az-display">—</strong>
+        <!-- RÉCAPITULATIF FINAL -->
+        <div id="compass-summary" class="compass-summary hidden">
+          <div class="summary-title">✅ Mesures enregistrées</div>
+          <div class="summary-row">
+            <span>🧭 Orientation :</span>
+            <strong id="sum-azimuth">—</strong>
           </div>
-          ${App.state.panel.name ? '' : `
-          <p class="hint">💡 Astuce : configurez votre panneau avant l'analyse</p>
-          <button class="btn btn-ghost btn-sm" data-nav="panel">Configurer le panneau →</button>
-          `}
+          <div class="summary-row">
+            <span>📐 Inclinaison :</span>
+            <strong id="sum-tilt">—</strong>
+          </div>
+          <div class="summary-row">
+            <span>🎯 Score global :</span>
+            <strong id="sum-score">—</strong>
+          </div>
+          <button class="btn btn-success btn-full" id="btn-next-analyze">
+            Analyser l'emplacement →
+          </button>
         </div>
 
-        <button class="btn btn-success hidden" id="btn-next-analyze">
-          Analyser l'emplacement →
-        </button>
-      </div>
+        <div class="obstacle-hint" style="margin-top:12px">
+          <button class="btn btn-ghost btn-sm" data-nav="obstacles">
+            🌳 Définir les obstacles / ombres portées
+          </button>
+        </div>
 
-      <div class="obstacle-hint">
-        <button class="btn btn-ghost btn-sm" data-nav="obstacles">
-          🌳 Définir les obstacles (ombres)
-        </button>
-      </div>
+      </div><!-- /compass-live -->
     </div>`;
   },
 

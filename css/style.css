@@ -279,79 +279,204 @@ body {
 .cl-e { right: 10px; top: 50%; transform: translateY(-50%); }
 .cl-o { left: 10px; top: 50%; transform: translateY(-50%); }
 
-.compass-needle-wrap { position: relative; width: 40px; height: 160px; display: flex; flex-direction: column; align-items: center; }
-.compass-needle {
-  width: 100%; height: 100%;
-  display: flex; flex-direction: column;
-  align-items: center;
-  transition: transform 0.15s ease;
-  transform-origin: center center;
+/* ── COMPASS v2 ── */
+.compass-tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+  background: var(--surface);
+  border-radius: var(--radius);
+  padding: 6px;
+  border: 1px solid var(--border2);
 }
-.needle-north {
-  width: 6px;
-  height: 80px;
-  background: linear-gradient(to bottom, #fff, var(--red));
-  clip-path: polygon(50% 0%, 0% 100%, 100% 100%);
+.ctab {
+  flex: 1;
+  padding: 10px 8px;
+  border-radius: var(--radius-sm);
+  border: none;
+  background: none;
+  color: var(--text-muted);
+  font-family: var(--font-display);
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  letter-spacing: 0.03em;
 }
-.needle-south {
-  width: 6px;
-  height: 80px;
-  background: linear-gradient(to top, #fff, var(--text-muted));
-  clip-path: polygon(0% 0%, 100% 0%, 50% 100%);
+.ctab.active {
+  background: var(--solar);
+  color: var(--bg);
 }
 
-.compass-data {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px;
-  width: 100%;
+.compass-panel { width: 100%; }
+.panel-hint {
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  text-align: center;
+  margin-bottom: 12px;
+  background: var(--surface);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  border: 1px solid var(--border2);
+  line-height: 1.5;
 }
-.data-row {
+
+/* ── SVG COMPASS ── */
+.compass-svg-wrap {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 14px;
+}
+#compass-svg {
+  width: 220px;
+  height: 220px;
+  filter: drop-shadow(0 0 20px rgba(245,166,35,0.2));
+}
+
+/* Barre données compacte */
+.compass-data-strip {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.cds-item {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  background: var(--surface);
+  border: 1px solid var(--border2);
+  border-radius: var(--radius-sm);
+  padding: 10px 6px;
+}
+.cds-center { border-color: var(--solar); }
+.cds-label { font-size: 0.62rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.06em; }
+.cds-value { font-family: var(--font-mono); font-size: 1.05rem; font-weight: bold; color: var(--solar); }
+.cds-dir   { font-size: 1.3rem; }
+
+/* Barre de qualité */
+.quality-bar-wrap {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+.quality-bar {
+  flex: 1;
+  height: 6px;
+  background: var(--surface2);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.quality-fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.3s ease, background 0.3s;
+}
+.quality-label { font-size: 0.78rem; font-weight: 600; min-width: 130px; }
+
+/* Capture OK */
+.captured-ok {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: rgba(126,207,171,0.1);
+  border: 1px solid var(--green);
+  border-radius: var(--radius-sm);
+  padding: 10px 14px;
+  font-size: 0.85rem;
+  color: var(--green);
+  margin-top: 8px;
+  flex-wrap: wrap;
+}
+.captured-ok strong { color: var(--text); }
+
+/* ── INCLINOMETRE ── */
+.tilt-meter-wrap {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 12px;
+}
+.tilt-meter { width: 100%; max-width: 300px; }
+#tilt-svg { width: 100%; border-radius: var(--radius); overflow: hidden; }
+
+.tilt-legend {
+  display: flex;
+  justify-content: center;
+  gap: 16px;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  margin-top: 6px;
+}
+
+.tilt-info-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+.tig-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
   background: var(--surface);
   border: 1px solid var(--border2);
   border-radius: var(--radius-sm);
   padding: 10px 12px;
+  font-size: 0.83rem;
+}
+.tig-icon { font-size: 1.1rem; flex-shrink: 0; }
+.tig-label { color: var(--text-muted); }
+.tig-label strong { color: var(--solar); }
+
+/* Référence angles */
+.tilt-reference {
+  background: var(--surface);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  margin-bottom: 12px;
+  border: 1px solid var(--border2);
+}
+.tref-title { font-size: 0.72rem; color: var(--text-muted); text-transform: uppercase; margin-bottom: 6px; }
+.tref-grid {
   display: flex;
-  flex-direction: column;
-  gap: 2px;
+  flex-wrap: wrap;
+  gap: 6px;
 }
-.data-label { font-size: 0.7rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; }
-.data-value { font-family: var(--font-mono); font-size: 1.1rem; font-weight: bold; color: var(--solar); }
-
-.score-badge {
-  font-family: var(--font-mono);
-  font-size: 1.1rem;
-  font-weight: bold;
-  padding: 2px 8px;
+.tref-item {
+  font-size: 0.75rem;
+  background: var(--bg3);
   border-radius: 4px;
+  padding: 4px 8px;
+  color: var(--text-muted);
 }
-.score-badge.excellent { color: var(--green); }
-.score-badge.good { color: #a8d8a8; }
-.score-badge.fair { color: var(--solar); }
-.score-badge.poor { color: var(--red); }
 
-.compass-actions { display: flex; gap: 10px; width: 100%; }
-
-.surface-captured {
-  width: 100%;
-  background: rgba(126,207,171,0.1);
+/* Résumé final */
+.compass-summary {
+  background: rgba(126,207,171,0.08);
   border: 1px solid var(--green);
   border-radius: var(--radius);
-  padding: 14px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8px;
+  padding: 16px;
+  margin-top: 12px;
 }
-.surface-captured.hidden { display: none; }
-.captured-badge {
-  display: flex;
-  align-items: center;
-  gap: 10px;
+.summary-title {
+  font-family: var(--font-display);
+  font-size: 1rem;
+  font-weight: 700;
   color: var(--green);
-  font-weight: 600;
+  margin-bottom: 10px;
 }
-.hint { font-size: 0.8rem; color: var(--text-muted); }
+.summary-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--border2);
+  font-size: 0.85rem;
+}
+.summary-row:last-of-type { border-bottom: none; margin-bottom: 12px; }
+.summary-row strong { color: var(--solar); font-family: var(--font-mono); }
 
 .obstacle-hint { margin-top: 8px; }
 

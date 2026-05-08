@@ -169,67 +169,242 @@ const App = {
 
   bindCompass() {
     const startBtn = document.getElementById('btn-compass-start');
-    const calibBtn = document.getElementById('btn-calibrate');
-    const captureBtn = document.getElementById('btn-capture-surface');
-    const nextBtn = document.getElementById('btn-next-analyze');
 
     startBtn?.addEventListener('click', async () => {
       const ok = await Compass.requestPermission();
       if (!ok) { UI.showToast('Permission refusée. Activez le capteur dans les réglages.', 'error'); return; }
       this.state.compassPermission = true;
-      startBtn.style.display = 'none';
-      document.getElementById('compass-live')?.classList.remove('hidden');
+      document.getElementById('compass-start-screen').style.display = 'none';
+      document.getElementById('compass-live').classList.remove('hidden');
+
+      // Dessiner les graduations SVG une seule fois
+      this._buildCompassDial();
+      this._buildTiltGraduations();
 
       Compass.start(data => {
-        this.state.heading = data.heading;
-        this.state.tilt = data.tilt;
+        this.state.heading     = data.heading;
+        this.state.surfaceTilt = data.surfaceTilt;
         this.updateCompassUI(data);
       });
 
       if (!this.state.location) await this.getLocation();
     });
 
-    calibBtn?.addEventListener('click', () => {
-      const ok = Compass.calibrateNorth();
-      UI.showToast(ok ? 'Nord calibré ! Pointez vers votre surface.' : 'Aucune donnée boussole', ok ? 'success' : 'error');
-    });
-
-    captureBtn?.addEventListener('click', () => {
-      if (this.state.heading === null) { UI.showToast('Démarrez la boussole d\'abord', 'error'); return; }
-      this.state.surface.azimuth = Math.round(this.state.heading);
-      this.state.surface.tilt = Compass.getSurfaceTilt() || this.state.install.existingTilt;
-      this.state.surface.label = Solar.compassLabel(this.state.surface.azimuth);
+    // ── Capture ORIENTATION ─────────────────────────────
+    document.getElementById('btn-capture-azimuth')?.addEventListener('click', () => {
+      if (Compass.heading === null) { UI.showToast('Boussole non active', 'error'); return; }
+      const az  = Math.round(Compass.heading);
+      const lbl = Compass.compassLabel(az);
+      this.state.surface.azimuth = az;
+      this.state.surface.label   = lbl;
+      this._azCaptured = true;
       this.saveToStorage();
-      UI.showToast(`Surface capturée : ${this.state.surface.label} (${this.state.surface.azimuth}°)`, 'success');
-      document.getElementById('surface-captured')?.classList.remove('hidden');
-      document.getElementById('surface-az-display').textContent = `${this.state.surface.azimuth}° ${this.state.surface.label}`;
-      nextBtn?.classList.remove('hidden');
+      document.getElementById('azimuth-captured').classList.remove('hidden');
+      document.getElementById('az-captured-display').textContent = `${az}° — ${lbl}`;
+      document.getElementById('btn-capture-azimuth').style.display = 'none';
+      UI.showToast(`Orientation capturée : ${lbl} (${az}°)`, 'success');
+      this._checkCompassSummary();
     });
 
-    nextBtn?.addEventListener('click', () => {
+    document.getElementById('btn-recapture-az')?.addEventListener('click', () => {
+      this._azCaptured = false;
+      document.getElementById('azimuth-captured').classList.add('hidden');
+      document.getElementById('btn-capture-azimuth').style.display = '';
+      document.getElementById('compass-summary').classList.add('hidden');
+    });
+
+    // ── Capture INCLINAISON ─────────────────────────────
+    document.getElementById('btn-capture-tilt')?.addEventListener('click', () => {
+      if (Compass.surfaceTilt === null) { UI.showToast('Posez d\'abord le téléphone sur la surface', 'error'); return; }
+      const tilt = Compass.surfaceTilt;
+      this.state.surface.tilt = tilt;
+      this._tiltCaptured = true;
+      this.saveToStorage();
+      const lbl = Compass.getTiltLabel(tilt);
+      document.getElementById('tilt-captured').classList.remove('hidden');
+      document.getElementById('tilt-captured-display').textContent = `${tilt}° — ${lbl}`;
+      document.getElementById('btn-capture-tilt').style.display = 'none';
+      UI.showToast(`Inclinaison capturée : ${tilt}° (${lbl})`, 'success');
+      this._checkCompassSummary();
+    });
+
+    document.getElementById('btn-recapture-tilt')?.addEventListener('click', () => {
+      this._tiltCaptured = false;
+      document.getElementById('tilt-captured').classList.add('hidden');
+      document.getElementById('btn-capture-tilt').style.display = '';
+      document.getElementById('compass-summary').classList.add('hidden');
+    });
+
+    // ── Aller à l'analyse ───────────────────────────────
+    document.getElementById('btn-next-analyze')?.addEventListener('click', () => {
       Compass.stop();
       this.navigate('analyze');
     });
   },
 
-  updateCompassUI(data) {
-    const needle = document.getElementById('compass-needle');
-    const headingEl = document.getElementById('heading-value');
-    const tiltEl = document.getElementById('tilt-value');
-    const dirEl = document.getElementById('direction-label');
+  // Affiche le récap si les 2 mesures sont faites
+  _checkCompassSummary() {
+    if (!this._azCaptured || !this._tiltCaptured) return;
+    const az   = this.state.surface.azimuth;
+    const tilt = this.state.surface.tilt;
+    const lbl  = this.state.surface.label;
+    const loc  = this.state.location;
+    const azScore  = loc ? Solar.scoreOrientation(az, loc.latitude) : '—';
+    const tiltQ    = loc ? Compass.getTiltQuality(tilt, loc.latitude) : null;
+    const globalScore = tiltQ ? Math.round((azScore + tiltQ.score) / 2) : azScore;
 
-    if (needle) needle.style.transform = `rotate(${data.heading}deg)`;
-    if (headingEl) headingEl.textContent = `${Math.round(data.heading)}°`;
-    if (tiltEl && data.tilt !== null) tiltEl.textContent = `${Math.round(Math.abs(data.tilt))}°`;
-    if (dirEl) dirEl.textContent = Solar.compassLabel(data.heading);
+    const el = id => document.getElementById(id);
+    el('sum-azimuth').textContent = `${az}° — ${lbl}`;
+    el('sum-tilt').textContent    = `${tilt}° — ${Compass.getTiltLabel(tilt)}`;
+    el('sum-score').textContent   = `${globalScore}/100`;
+    el('compass-summary').classList.remove('hidden');
+  },
 
-    // Color code based on solar quality
-    const score = this.state.location ? Solar.scoreOrientation(data.heading, this.state.location.latitude) : 50;
-    const scoreEl = document.getElementById('orientation-score');
-    if (scoreEl) {
-      scoreEl.textContent = score;
-      scoreEl.className = `score-badge ${score >= 80 ? 'excellent' : score >= 60 ? 'good' : score >= 40 ? 'fair' : 'poor'}`;
+  // Dessine les graduations du cadran SVG
+  _buildCompassDial() {
+    const g = document.getElementById('dial-ticks');
+    if (!g) return;
+    let html = '';
+    for (let i = 0; i < 360; i += 10) {
+      const rad = i * Math.PI / 180;
+      const isCard = (i % 90 === 0);
+      const isMajor = (i % 30 === 0);
+      const r1 = 88, r2 = isCard ? 72 : isMajor ? 78 : 82;
+      const x1 = 110 + r1 * Math.sin(rad), y1 = 110 - r1 * Math.cos(rad);
+      const x2 = 110 + r2 * Math.sin(rad), y2 = 110 - r2 * Math.cos(rad);
+      const color = isCard ? 'rgba(245,166,35,0.6)' : 'rgba(255,255,255,0.2)';
+      const w = isCard ? 2 : isMajor ? 1.5 : 1;
+      html += `<line x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}" stroke="${color}" stroke-width="${w}"/>`;
     }
+    g.innerHTML = html;
+  },
+
+  // Dessine les graduations du rapporteur SVG
+  _buildTiltGraduations() {
+    const g = document.getElementById('tilt-graduations');
+    if (!g) return;
+    let html = '';
+    const cx = 140, cy = 130, R = 100;
+    for (let angle = 0; angle <= 90; angle += 15) {
+      const rad = angle * Math.PI / 180;
+      const x1 = cx + R * Math.sin(rad), y1 = cy - R * Math.cos(rad);
+      const x2l = cx - R * Math.sin(rad), y2l = cy - R * Math.cos(rad); // symétrique gauche
+      const isMaj = (angle % 30 === 0);
+      const col = isMaj ? 'rgba(245,166,35,0.5)' : 'rgba(255,255,255,0.2)';
+      // Trait droit
+      const r2 = R - (isMaj ? 12 : 8);
+      const x1b = cx + r2 * Math.sin(rad), y1b = cy - r2 * Math.cos(rad);
+      html += `<line x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x1b.toFixed(1)}" y2="${y1b.toFixed(1)}" stroke="${col}" stroke-width="${isMaj?1.5:1}"/>`;
+      // Trait gauche symétrique
+      const x2b = cx - r2 * Math.sin(rad);
+      html += `<line x1="${x2l.toFixed(1)}" y1="${y2l.toFixed(1)}" x2="${x2b.toFixed(1)}" y2="${y2l.toFixed(1)}" stroke="${col}" stroke-width="${isMaj?1.5:1}"/>`;
+      if (isMaj && angle > 0) {
+        const xt = cx + (R+10) * Math.sin(rad), yt = cy - (R+10) * Math.cos(rad);
+        const xl = cx - (R+10) * Math.sin(rad);
+        html += `<text x="${xt.toFixed(1)}" y="${(yt+4).toFixed(1)}" text-anchor="middle" font-size="9" font-family="monospace" fill="rgba(255,255,255,0.35)">${angle}°</text>`;
+        if (angle !== 90) html += `<text x="${xl.toFixed(1)}" y="${(yt+4).toFixed(1)}" text-anchor="middle" font-size="9" font-family="monospace" fill="rgba(255,255,255,0.35)">${angle}°</text>`;
+      }
+    }
+    // Ligne 0°
+    html += `<text x="140" y="${cy - R - 14}" text-anchor="middle" font-size="9" font-family="monospace" fill="rgba(255,255,255,0.35)">90°</text>`;
+    g.innerHTML = html;
+  },
+
+  updateCompassUI(data) {
+    const heading     = data.heading;
+    const surfaceTilt = data.surfaceTilt;
+    const loc         = this.state.location;
+
+    // ── ORIENTATION panel ──────────────────────────────
+    const dial = document.getElementById('compass-dial');
+    if (dial) dial.style.transform = `rotate(${-heading}deg)`;
+
+    const headingEl = document.getElementById('heading-value');
+    const dirEl     = document.getElementById('direction-label');
+    const scoreEl   = document.getElementById('orientation-score');
+    const fillEl    = document.getElementById('quality-fill');
+    const qualLbl   = document.getElementById('quality-label');
+
+    if (headingEl) headingEl.textContent = `${Math.round(heading)}°`;
+    if (dirEl)     dirEl.textContent     = Compass.compassLabel(heading);
+
+    const score = loc ? Solar.scoreOrientation(heading, loc.latitude) : null;
+    if (scoreEl && score !== null) {
+      scoreEl.textContent = `${score}/100`;
+      scoreEl.style.color = score >= 80 ? '#7ecfab' : score >= 60 ? '#a8d84a' : score >= 40 ? '#f5a623' : '#e74c3c';
+    }
+    if (fillEl && score !== null) {
+      fillEl.style.width = `${score}%`;
+      fillEl.style.background = score >= 80 ? '#7ecfab' : score >= 60 ? '#a8d84a' : score >= 40 ? '#f5a623' : '#e74c3c';
+    }
+    if (qualLbl && score !== null) {
+      const labels = [[80,'Excellent ✓ Orientez ici !'],[60,'Bon'],[40,'Acceptable'],[0,'Orientation déconseillée']];
+      qualLbl.textContent = (labels.find(([t]) => score >= t) || labels[3])[1];
+      qualLbl.style.color = score >= 80 ? '#7ecfab' : score >= 60 ? '#a8d84a' : score >= 40 ? '#f5a623' : '#e74c3c';
+    }
+
+    // Arc de score sur le SVG
+    this._updateScoreArc(heading, score);
+
+    // ── INCLINAISON panel ───────────────────────────────
+    if (surfaceTilt !== null) {
+      const needle  = document.getElementById('tilt-needle');
+      const bigVal  = document.getElementById('tilt-big-value');
+      const optimal = document.getElementById('tilt-optimal');
+      const emojiEl = document.getElementById('tilt-emoji');
+      const lblEl   = document.getElementById('tilt-label');
+      const qualRow = document.getElementById('tilt-quality-row');
+      const qualLb2 = document.getElementById('tilt-quality-label');
+
+      const cx = 140, cy = 130, R = 90;
+      // Aiguille : 0°=vertical, 90°=horizontal → on l'affiche depuis le bas
+      const rad = surfaceTilt * Math.PI / 180;
+      const nx  = cx + R * Math.sin(rad);
+      const ny  = cy - R * Math.cos(rad);
+      if (needle)  needle.setAttribute('x2', nx.toFixed(1));
+      if (needle)  needle.setAttribute('y2', ny.toFixed(1));
+      if (bigVal)  bigVal.textContent = `${surfaceTilt}°`;
+
+      // Ligne optimale
+      if (optimal && loc) {
+        const optRad = Solar.optimalTilt(loc.latitude) * Math.PI / 180;
+        optimal.setAttribute('x2', (cx + R * Math.sin(optRad)).toFixed(1));
+        optimal.setAttribute('y2', (cy - R * Math.cos(optRad)).toFixed(1));
+      }
+
+      if (emojiEl) emojiEl.textContent = Compass.getTiltEmoji(surfaceTilt);
+      if (lblEl)   lblEl.textContent   = `${surfaceTilt}° — ${Compass.getTiltLabel(surfaceTilt)}`;
+
+      const tq = loc ? Compass.getTiltQuality(surfaceTilt, loc.latitude) : null;
+      if (tq && qualRow && qualLb2) {
+        qualRow.style.display = '';
+        qualLb2.textContent   = `Qualité inclinaison : ${tq.label}`;
+        qualLb2.style.color   = tq.color;
+      }
+    }
+  },
+
+  _updateScoreArc(heading, score) {
+    const arc = document.getElementById('score-arc');
+    if (!arc || score === null) return;
+    // Arc centré sur le bas de la boussole (180°), largeur proportionnelle au score
+    const cx = 110, cy = 110, R = 95;
+    const spread = (score / 100) * 60; // max 60° de chaque côté
+    const startDeg = 180 - spread;
+    const endDeg   = 180 + spread;
+    const toRad = d => d * Math.PI / 180;
+    const x1 = cx + R * Math.sin(toRad(startDeg)), y1 = cy - R * Math.cos(toRad(startDeg));
+    const x2 = cx + R * Math.sin(toRad(endDeg)),   y2 = cy - R * Math.cos(toRad(endDeg));
+    const large = spread * 2 > 180 ? 1 : 0;
+    arc.setAttribute('d', `M ${x1.toFixed(1)} ${y1.toFixed(1)} A ${R} ${R} 0 ${large} 1 ${x2.toFixed(1)} ${y2.toFixed(1)}`);
+    arc.setAttribute('stroke', score >= 80 ? '#7ecfab' : score >= 60 ? '#a8d84a' : score >= 40 ? '#f5a623' : '#e74c3c');
+  },
+
+  switchCompassTab(tab) {
+    document.getElementById('panel-orientation').classList.toggle('hidden', tab !== 'orientation');
+    document.getElementById('panel-tilt').classList.toggle('hidden', tab !== 'tilt');
+    document.getElementById('tab-orientation').classList.toggle('active', tab === 'orientation');
+    document.getElementById('tab-tilt').classList.toggle('active', tab === 'tilt');
   },
 
   async bindAnalyze() {
