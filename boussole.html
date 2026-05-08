@@ -183,8 +183,9 @@ h1 { font-size: 1.4rem; color: #f5a623; margin-bottom: 4px; text-align: center; 
 <!-- ZONE LIVE -->
 <div id="live-zone" style="display:none;width:100%;max-width:360px;flex-direction:column;align-items:center;gap:10px">
 
-  <div style="display:flex;align-items:center;gap:8px">
+  <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:center">
     <span id="sensor-status" class="status-badge status-warn">⏳ En attente du capteur…</span>
+    <span id="gps-status"    class="status-badge status-warn">📍 GPS en cours…</span>
   </div>
 
   <!-- ONGLETS -->
@@ -391,7 +392,9 @@ h1 { font-size: 1.4rem; color: #f5a623; margin-bottom: 4px; text-align: center; 
 const state = {
   heading:     null,
   surfaceTilt: null,
-  latitude:    null,   // rempli par GPS
+  latitude:    null,
+  longitude:   null,
+  accuracy:    null,
   azCaptured:  false,
   tiltCaptured: false,
   az:    null,
@@ -538,19 +541,100 @@ function stopCompass() {
 }
 
 // ═══════════════════════════════════════════════════════
-// GPS
+// ═══════════════════════════════════════════════════════
+// GPS — avec feedback visuel et retry automatique
 // ═══════════════════════════════════════════════════════
 function startGPS() {
-  if (!navigator.geolocation) return;
+  if (!navigator.geolocation) {
+    setGPSStatus('err', '📍 GPS non supporté');
+    dbg('GPS: navigator.geolocation absent');
+    return;
+  }
+
+  setGPSStatus('warn', '📍 GPS en cours…');
+  dbg('GPS: demande de position...');
+
   navigator.geolocation.getCurrentPosition(
     pos => {
-      state.latitude = pos.coords.latitude;
-      dbg(`GPS: ${pos.coords.latitude.toFixed(4)}°N ±${Math.round(pos.coords.accuracy)}m`);
+      state.latitude  = pos.coords.latitude;
+      state.longitude = pos.coords.longitude;
+      state.accuracy  = Math.round(pos.coords.accuracy);
+
+      const acc = state.accuracy;
+      const accTxt = acc < 20 ? '✅' : acc < 50 ? '⚠️' : '🔴';
+      setGPSStatus('ok', `📍 ${state.latitude.toFixed(4)}°N ${accTxt} ±${acc}m`);
+      dbg(`GPS OK: ${state.latitude.toFixed(5)}° / ${state.longitude.toFixed(5)}° ±${acc}m`);
+
+      // Sauvegarder immédiatement dans localStorage pour l'app principale
+      saveGPSToStorage();
       updateOptimalNeedle();
     },
-    err => dbg('GPS erreur: ' + err.message),
-    { enableHighAccuracy: true, timeout: 10000 }
+    err => {
+      const msgs = {
+        1: 'Permission refusée — autorisez la localisation dans votre navigateur',
+        2: 'Position indisponible — êtes-vous en extérieur ?',
+        3: 'Délai dépassé — nouvelle tentative…'
+      };
+      const msg = msgs[err.code] || ('Erreur GPS: ' + err.message);
+      setGPSStatus('err', '📍 ' + (err.code === 1 ? 'Permission refusée' : err.code === 3 ? 'Timeout, retry…' : 'GPS indispo'));
+      dbg('GPS erreur code=' + err.code + ' : ' + msg);
+
+      // Retry automatique si timeout (code 3), en mode moins précis
+      if (err.code === 3) {
+        setTimeout(() => {
+          dbg('GPS: retry en mode basse précision...');
+          navigator.geolocation.getCurrentPosition(
+            pos => {
+              state.latitude  = pos.coords.latitude;
+              state.longitude = pos.coords.longitude;
+              state.accuracy  = Math.round(pos.coords.accuracy);
+              setGPSStatus('ok', `📍 ${state.latitude.toFixed(4)}°N ±${state.accuracy}m`);
+              dbg(`GPS retry OK: ±${state.accuracy}m`);
+              saveGPSToStorage();
+              updateOptimalNeedle();
+            },
+            err2 => {
+              setGPSStatus('err', '📍 GPS échoué');
+              dbg('GPS retry échoué: ' + err2.message);
+              // On continue avec latitude par défaut (France ~47°)
+              state.latitude = 47.0;
+              dbg('GPS: utilisation latitude par défaut 47°N');
+              updateOptimalNeedle();
+            },
+            { enableHighAccuracy: false, timeout: 15000, maximumAge: 60000 }
+          );
+        }, 1500);
+      } else if (err.code === 1) {
+        // Permission refusée : utiliser latitude par défaut avec avertissement
+        state.latitude = 47.0;
+        dbg('GPS: permission refusée, latitude par défaut 47°N utilisée');
+        updateOptimalNeedle();
+      }
+    },
+    { enableHighAccuracy: true, timeout: 12000, maximumAge: 30000 }
   );
+}
+
+function setGPSStatus(type, text) {
+  const el = document.getElementById('gps-status');
+  if (!el) return;
+  el.textContent = text;
+  el.className = 'status-badge ' + (type === 'ok' ? 'status-ok' : type === 'err' ? 'status-err' : 'status-warn');
+}
+
+function saveGPSToStorage() {
+  try {
+    const d = JSON.parse(localStorage.getItem('heliospot_data_v1') || '{}');
+    d.location = {
+      latitude:  state.latitude,
+      longitude: state.longitude,
+      accuracy:  state.accuracy
+    };
+    localStorage.setItem('heliospot_data_v1', JSON.stringify(d));
+    dbg('GPS sauvegardé dans localStorage');
+  } catch(e) {
+    dbg('localStorage erreur: ' + e.message);
+  }
 }
 
 // ═══════════════════════════════════════════════════════
@@ -706,12 +790,18 @@ function checkSummary() {
   document.getElementById('sum-tilt').textContent  = state.tilt + '° — ' + tiltLabel(state.tilt);
   document.getElementById('sum-score').textContent = global + '/100';
   document.getElementById('summary').classList.add('show');
-  // Sauvegarde dans localStorage pour l'app principale
+  // Sauvegarde complète dans localStorage pour l'app principale
   try {
     const d = JSON.parse(localStorage.getItem('heliospot_data_v1') || '{}');
     d.surface = { azimuth: state.az, tilt: state.tilt, label: state.azLbl };
+    if (state.latitude !== null) {
+      d.location = { latitude: state.latitude, longitude: state.longitude, accuracy: state.accuracy };
+    }
     localStorage.setItem('heliospot_data_v1', JSON.stringify(d));
-  } catch(e) {}
+    dbg('Données complètes sauvegardées dans localStorage');
+  } catch(e) {
+    dbg('localStorage erreur: ' + e.message);
+  }
 }
 
 function goAnalyze() {
