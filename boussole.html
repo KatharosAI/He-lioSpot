@@ -1,0 +1,755 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#0a0f1e">
+<title>HelioSpot — Boussole</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: 'Segoe UI', sans-serif;
+  background: #0a0f1e;
+  color: #e8eaf0;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 16px;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+h1 { font-size: 1.4rem; color: #f5a623; margin-bottom: 4px; text-align: center; }
+.sub { font-size: 0.8rem; color: rgba(255,255,255,0.4); text-align: center; margin-bottom: 16px; }
+
+/* ── TABS ── */
+.tabs {
+  display: flex; gap: 8px; width: 100%; max-width: 360px;
+  background: #162035; border-radius: 10px; padding: 5px; margin-bottom: 14px;
+}
+.tab {
+  flex: 1; padding: 10px; border: none; border-radius: 7px;
+  background: none; color: rgba(255,255,255,0.5);
+  font-size: 0.9rem; font-weight: 600; cursor: pointer; transition: all .2s;
+}
+.tab.active { background: #f5a623; color: #0a0f1e; }
+
+/* ── PANELS ── */
+.panel { width: 100%; max-width: 360px; display: flex; flex-direction: column; align-items: center; gap: 10px; }
+.panel.hidden { display: none !important; }
+
+.hint-box {
+  width: 100%; background: #162035; border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 8px; padding: 10px 14px; font-size: 0.82rem; color: rgba(255,255,255,0.55);
+  text-align: center; line-height: 1.5;
+}
+.hint-box strong { color: #f5a623; }
+
+/* ── BOUSSOLE SVG ── */
+.compass-wrap { position: relative; width: 240px; height: 240px; }
+
+#compass-svg { width: 240px; height: 240px; overflow: visible; }
+
+/* IMPORTANT : le cadran SVG tourne via JS avec setAttribute('transform') */
+/* Pas de transform CSS — incompatible avec <g> SVG sur mobiles */
+
+/* ── DATA STRIP ── */
+.data-strip {
+  display: flex; gap: 8px; width: 100%;
+}
+.ds-box {
+  flex: 1; background: #162035; border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 8px; padding: 10px 6px; text-align: center;
+}
+.ds-box.hi { border-color: #f5a623; }
+.ds-label { font-size: 0.6rem; color: rgba(255,255,255,0.4); text-transform: uppercase; letter-spacing: .06em; display: block; margin-bottom: 3px; }
+.ds-val { font-family: monospace; font-size: 1.1rem; font-weight: bold; color: #f5a623; }
+.ds-val.dir { font-size: 1.3rem; }
+
+/* ── QUALITY BAR ── */
+.qbar-wrap { display: flex; align-items: center; gap: 10px; width: 100%; }
+.qbar { flex: 1; height: 6px; background: #162035; border-radius: 3px; overflow: hidden; }
+.qbar-fill { height: 100%; width: 0%; border-radius: 3px; transition: width .3s, background .3s; }
+.qlabel { font-size: 0.8rem; font-weight: 600; min-width: 120px; color: rgba(255,255,255,0.5); }
+
+/* ── INCLINOMETRE ── */
+#tilt-svg { width: 100%; max-width: 320px; }
+
+.tilt-info {
+  display: flex; flex-direction: column; gap: 7px; width: 100%;
+}
+.ti-row {
+  display: flex; align-items: center; gap: 10px;
+  background: #162035; border: 1px solid rgba(255,255,255,0.07);
+  border-radius: 8px; padding: 10px 12px; font-size: 0.82rem;
+}
+.ti-icon { font-size: 1.1rem; flex-shrink: 0; }
+.ti-text { color: rgba(255,255,255,0.6); }
+.ti-text strong { color: #f5a623; }
+
+.tilt-ref {
+  width: 100%; background: #162035; border-radius: 8px;
+  padding: 10px 12px; border: 1px solid rgba(255,255,255,0.06);
+}
+.tilt-ref-title { font-size: 0.7rem; color: rgba(255,255,255,0.4); text-transform: uppercase; margin-bottom: 6px; }
+.tilt-ref-grid { display: flex; flex-wrap: wrap; gap: 5px; }
+.tilt-ref-item { font-size: 0.72rem; background: #0d1b2a; border-radius: 4px; padding: 4px 8px; color: rgba(255,255,255,0.5); }
+
+/* ── BUTTONS ── */
+.btn {
+  width: 100%; padding: 13px; border-radius: 8px; border: none;
+  font-size: 0.95rem; font-weight: 700; cursor: pointer; letter-spacing: .03em;
+  text-transform: uppercase; transition: all .2s;
+}
+.btn-primary { background: #f5a623; color: #0a0f1e; }
+.btn-primary:hover { background: #d4891a; }
+.btn-success { background: #4aaa80; color: #fff; }
+.btn-ghost {
+  background: none; color: rgba(255,255,255,0.5);
+  border: 1px solid rgba(255,255,255,0.15); font-size: 0.8rem; padding: 8px 14px; width: auto;
+}
+
+/* ── CAPTURE OK ── */
+.captured {
+  display: none; width: 100%;
+  background: rgba(74,170,128,0.12); border: 1px solid #4aaa80;
+  border-radius: 8px; padding: 10px 14px; font-size: 0.85rem;
+  color: #4aaa80; align-items: center; gap: 10px; flex-wrap: wrap;
+}
+.captured.show { display: flex; }
+.captured strong { color: #e8eaf0; }
+
+/* ── SUMMARY ── */
+.summary {
+  display: none; width: 100%;
+  background: rgba(74,170,128,0.08); border: 1px solid #4aaa80;
+  border-radius: 10px; padding: 16px; gap: 8px; flex-direction: column;
+}
+.summary.show { display: flex; }
+.sum-title { font-size: 1rem; font-weight: 700; color: #4aaa80; }
+.sum-row {
+  display: flex; justify-content: space-between;
+  padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.06);
+  font-size: 0.85rem;
+}
+.sum-row:last-of-type { border-bottom: none; }
+.sum-row strong { font-family: monospace; color: #f5a623; }
+
+/* ── DEBUG (caché en prod) ── */
+#debug {
+  position: fixed; bottom: 70px; left: 8px; right: 8px;
+  background: rgba(0,0,0,0.85); border: 1px solid #f5a623;
+  border-radius: 6px; padding: 8px; font-family: monospace;
+  font-size: 0.7rem; color: #f5a623; display: none; z-index: 999;
+  max-height: 120px; overflow-y: auto;
+}
+#debug.show { display: block; }
+
+.status-badge {
+  font-size: 0.7rem; padding: 3px 8px; border-radius: 4px; font-weight: 600;
+}
+.status-ok  { background: rgba(74,170,128,0.2); color: #4aaa80; border: 1px solid #4aaa80; }
+.status-warn { background: rgba(245,166,35,0.2); color: #f5a623; border: 1px solid #f5a623; }
+.status-err { background: rgba(231,76,60,0.2); color: #e74c3c; border: 1px solid #e74c3c; }
+</style>
+</head>
+<body>
+
+<h1>⬡ HelioSpot</h1>
+<p class="sub">Boussole solaire</p>
+
+<!-- ÉCRAN DE DÉMARRAGE -->
+<div id="start-screen" style="width:100%;max-width:360px;display:flex;flex-direction:column;gap:12px">
+  <div style="background:#162035;border-radius:10px;padding:16px;display:flex;flex-direction:column;gap:10px">
+    <div style="display:flex;align-items:flex-start;gap:10px">
+      <span style="background:#f5a623;color:#0a0f1e;border-radius:50%;width:22px;height:22px;display:flex;align-items:center;justify-content:center;font-size:.75rem;font-weight:bold;flex-shrink:0">1</span>
+      <span style="font-size:.85rem;color:rgba(255,255,255,.6)"><strong style="color:#e8eaf0">Orientation</strong> — tenez le téléphone à la verticale, pointez-le face à votre surface</span>
+    </div>
+    <div style="display:flex;align-items:flex-start;gap:10px">
+      <span style="background:#f5a623;color:#0a0f1e;border-radius:50%;width:22px;height:22px;display:flex;align-items:center;justify-content:center;font-size:.75rem;font-weight:bold;flex-shrink:0">2</span>
+      <span style="font-size:.85rem;color:rgba(255,255,255,.6)"><strong style="color:#e8eaf0">Inclinaison</strong> — posez le téléphone <em>à plat sur la surface</em> à mesurer</span>
+    </div>
+  </div>
+  <button class="btn btn-primary" id="btn-start">
+    🧭 Activer la boussole
+  </button>
+  <button class="btn btn-ghost" id="btn-debug-toggle" style="margin-top:4px">
+    🔧 Afficher le diagnostic
+  </button>
+</div>
+
+<!-- ZONE LIVE -->
+<div id="live-zone" style="display:none;width:100%;max-width:360px;flex-direction:column;align-items:center;gap:10px">
+
+  <div style="display:flex;align-items:center;gap:8px">
+    <span id="sensor-status" class="status-badge status-warn">⏳ En attente du capteur…</span>
+  </div>
+
+  <!-- ONGLETS -->
+  <div class="tabs">
+    <button class="tab active" id="tab-az" onclick="showTab('az')">🧭 Orientation</button>
+    <button class="tab"        id="tab-tilt" onclick="showTab('tilt')">📐 Inclinaison</button>
+  </div>
+
+  <!-- ═══ PANNEAU ORIENTATION ═══ -->
+  <div id="panel-az" class="panel">
+    <div class="hint-box">📱 Téléphone <strong>vertical</strong> — pointez vers votre surface</div>
+
+    <!-- SVG Boussole — cadran tournant, repère de visée fixe -->
+    <svg id="compass-svg" viewBox="0 0 240 240" xmlns="http://www.w3.org/2000/svg" style="width:240px;height:240px">
+      <!-- Fond -->
+      <circle cx="120" cy="120" r="118" fill="#0d1b2a" stroke="#f5a623" stroke-width="1.5"/>
+      <circle cx="120" cy="120" r="80" fill="none" stroke="rgba(245,166,35,0.07)" stroke-width="1"/>
+      <circle cx="120" cy="120" r="50" fill="none" stroke="rgba(245,166,35,0.05)" stroke-width="1"/>
+
+      <!--
+        ★ CADRAN TOURNANT
+        La rotation est appliquée via JS : setAttribute('transform', 'rotate(X 120 120)')
+        X = -heading  →  si heading=90° (Est), cadran tourne de -90° : E monte en haut sous le repère
+        Le "120 120" est le centre de rotation (cx cy du SVG)
+      -->
+      <g id="dial" transform="rotate(0 120 120)">
+        <!-- Graduation 5° -->
+        <line x1="120" y1="4"   x2="120" y2="18"  stroke="#f5a623" stroke-width="2.5"/><!-- N -->
+        <line x1="236" y1="120" x2="222" y2="120" stroke="rgba(255,255,255,0.4)" stroke-width="1.5"/><!-- E -->
+        <line x1="120" y1="236" x2="120" y2="222" stroke="rgba(255,255,255,0.4)" stroke-width="1.5"/><!-- S -->
+        <line x1="4"   y1="120" x2="18"  y2="120" stroke="rgba(255,255,255,0.4)" stroke-width="1.5"/><!-- O -->
+        <!-- NE -->
+        <line x1="204" y1="36" x2="193" y2="47" stroke="rgba(255,255,255,0.25)" stroke-width="1"/>
+        <!-- SE -->
+        <line x1="204" y1="204" x2="193" y2="193" stroke="rgba(255,255,255,0.25)" stroke-width="1"/>
+        <!-- SO -->
+        <line x1="36"  y1="204" x2="47"  y2="193" stroke="rgba(255,255,255,0.25)" stroke-width="1"/>
+        <!-- NO -->
+        <line x1="36"  y1="36"  x2="47"  y2="47"  stroke="rgba(255,255,255,0.25)" stroke-width="1"/>
+
+        <!-- Cercle de graduation fin -->
+        <circle cx="120" cy="120" r="112" fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="0.5"/>
+
+        <!-- Cardinaux -->
+        <text x="120" y="32"  text-anchor="middle" font-size="18" font-weight="bold" font-family="monospace" fill="#e74c3c">N</text>
+        <text x="120" y="218" text-anchor="middle" font-size="16" font-family="monospace" fill="rgba(255,255,255,0.5)">S</text>
+        <text x="212" y="125" text-anchor="middle" font-size="16" font-family="monospace" fill="rgba(255,255,255,0.5)">E</text>
+        <text x="28"  y="125" text-anchor="middle" font-size="16" font-family="monospace" fill="rgba(255,255,255,0.5)">O</text>
+        <!-- Inter-cardinaux -->
+        <text x="185" y="58"  text-anchor="middle" font-size="11" font-family="monospace" fill="rgba(255,255,255,0.28)">NE</text>
+        <text x="185" y="188" text-anchor="middle" font-size="11" font-family="monospace" fill="rgba(255,255,255,0.28)">SE</text>
+        <text x="55"  y="188" text-anchor="middle" font-size="11" font-family="monospace" fill="rgba(255,255,255,0.28)">SO</text>
+        <text x="55"  y="58"  text-anchor="middle" font-size="11" font-family="monospace" fill="rgba(255,255,255,0.28)">NO</text>
+      </g>
+
+      <!-- ★ REPÈRE DE VISÉE FIXE — ne tourne PAS, indique la direction du haut du téléphone -->
+      <polygon points="120,6 113,26 127,26" fill="#f5a623"/>
+      <line x1="120" y1="26" x2="120" y2="72" stroke="#f5a623" stroke-width="2" stroke-dasharray="5,3" opacity="0.7"/>
+
+      <!-- Centre -->
+      <circle cx="120" cy="120" r="10" fill="#162035" stroke="#f5a623" stroke-width="2"/>
+      <circle cx="120" cy="120" r="4"  fill="#f5a623"/>
+
+      <!-- Arc qualité (JS) -->
+      <path id="arc-quality" d="" fill="none" stroke="transparent" stroke-width="6" stroke-linecap="round" opacity="0"/>
+    </svg>
+
+    <!-- Données chiffrées -->
+    <div class="data-strip">
+      <div class="ds-box">
+        <span class="ds-label">CAP</span>
+        <span class="ds-val" id="val-heading">—°</span>
+      </div>
+      <div class="ds-box hi">
+        <span class="ds-label">DIRECTION</span>
+        <span class="ds-val dir" id="val-dir">—</span>
+      </div>
+      <div class="ds-box">
+        <span class="ds-label">SCORE</span>
+        <span class="ds-val" id="val-score">—</span>
+      </div>
+    </div>
+
+    <div class="qbar-wrap">
+      <div class="qbar"><div class="qbar-fill" id="qbar-fill"></div></div>
+      <span class="qlabel" id="qlabel">En attente…</span>
+    </div>
+
+    <button class="btn btn-primary" id="btn-capture-az">📌 Capturer l'orientation</button>
+    <div class="captured" id="cap-az">
+      ✓ Capturée : <strong id="cap-az-val">—</strong>
+      <button class="btn-ghost" onclick="recapture('az')">↺</button>
+    </div>
+  </div>
+
+  <!-- ═══ PANNEAU INCLINAISON ═══ -->
+  <div id="panel-tilt" class="panel hidden">
+    <div class="hint-box">📱 Posez le téléphone <strong>à plat sur la surface</strong> à mesurer</div>
+
+    <!-- Inclinomètre SVG — rapporteur -->
+    <svg id="tilt-svg" viewBox="0 0 300 170" xmlns="http://www.w3.org/2000/svg" style="width:100%;max-width:320px">
+      <rect width="300" height="170" fill="#0d1b2a" rx="10"/>
+
+      <!-- Arcs de référence -->
+      <path d="M 45 145 A 105 105 0 0 1 255 145" fill="none" stroke="rgba(245,166,35,0.12)" stroke-width="1"/>
+      <path d="M 75 145 A 75 75 0 0 1 225 145" fill="none" stroke="rgba(255,255,255,0.05)" stroke-width="1"/>
+
+      <!-- Graduations -->
+      <!-- 0° -->
+      <line x1="45"  y1="145" x2="57"  y2="145" stroke="rgba(245,166,35,0.5)" stroke-width="1.5"/>
+      <line x1="255" y1="145" x2="243" y2="145" stroke="rgba(245,166,35,0.5)" stroke-width="1.5"/>
+      <text x="35"  y="149" text-anchor="middle" font-size="9" font-family="monospace" fill="rgba(255,255,255,0.35)">0°</text>
+      <text x="265" y="149" text-anchor="middle" font-size="9" font-family="monospace" fill="rgba(255,255,255,0.35)">0°</text>
+      <!-- 30° -->
+      <line x1="97"  y1="93"  x2="105" y2="100" stroke="rgba(245,166,35,0.4)" stroke-width="1.5"/>
+      <line x1="203" y1="93"  x2="195" y2="100" stroke="rgba(245,166,35,0.4)" stroke-width="1.5"/>
+      <text x="86"  y="88" text-anchor="middle" font-size="9" font-family="monospace" fill="rgba(255,255,255,0.35)">30°</text>
+      <text x="214" y="88" text-anchor="middle" font-size="9" font-family="monospace" fill="rgba(255,255,255,0.35)">30°</text>
+      <!-- 45° -->
+      <line x1="76"  y1="71"  x2="84"  y2="79"  stroke="rgba(255,255,255,0.25)" stroke-width="1"/>
+      <line x1="224" y1="71"  x2="216" y2="79"  stroke="rgba(255,255,255,0.25)" stroke-width="1"/>
+      <text x="65"  y="66" text-anchor="middle" font-size="9" font-family="monospace" fill="rgba(255,255,255,0.25)">45°</text>
+      <text x="235" y="66" text-anchor="middle" font-size="9" font-family="monospace" fill="rgba(255,255,255,0.25)">45°</text>
+      <!-- 60° -->
+      <line x1="57"  y1="52"  x2="65"  y2="61"  stroke="rgba(255,255,255,0.2)" stroke-width="1"/>
+      <line x1="243" y1="52"  x2="235" y2="61"  stroke="rgba(255,255,255,0.2)" stroke-width="1"/>
+      <text x="46"  y="48" text-anchor="middle" font-size="9" font-family="monospace" fill="rgba(255,255,255,0.2)">60°</text>
+      <text x="254" y="48" text-anchor="middle" font-size="9" font-family="monospace" fill="rgba(255,255,255,0.2)">60°</text>
+      <!-- 90° -->
+      <line x1="150" y1="40"  x2="150" y2="53"  stroke="rgba(255,255,255,0.2)" stroke-width="1"/>
+      <text x="150" y="36" text-anchor="middle" font-size="9" font-family="monospace" fill="rgba(255,255,255,0.2)">90°</text>
+
+      <!-- Sol horizontal -->
+      <line x1="30" y1="145" x2="270" y2="145" stroke="rgba(255,255,255,0.1)" stroke-width="1" stroke-dasharray="4,4"/>
+      <text x="150" y="160" text-anchor="middle" font-size="8" font-family="monospace" fill="rgba(255,255,255,0.2)">HORIZONTAL</text>
+
+      <!-- Aiguille optimale (verte, position calculée par JS) -->
+      <line id="needle-opt" x1="150" y1="145" x2="185" y2="78" stroke="#4aaa80" stroke-width="1.5" stroke-dasharray="5,3" opacity="0.7"/>
+
+      <!-- Aiguille surface (ambre, bouge) -->
+      <line id="needle-tilt" x1="150" y1="145" x2="150" y2="40" stroke="#f5a623" stroke-width="3.5" stroke-linecap="round"/>
+      <circle cx="150" cy="145" r="6" fill="#f5a623"/>
+
+      <!-- Valeur centrale -->
+      <text id="tilt-val-big" x="150" y="118" text-anchor="middle" font-size="30" font-weight="bold" font-family="monospace" fill="#f5a623">—°</text>
+    </svg>
+
+    <div style="display:flex;gap:12px;font-size:.72rem;color:rgba(255,255,255,.4);margin-top:-4px">
+      <span><span style="color:#f5a623">—</span> Votre surface</span>
+      <span><span style="color:#4aaa80">╌</span> Inclinaison optimale</span>
+    </div>
+
+    <div class="tilt-info">
+      <div class="ti-row">
+        <span class="ti-icon" id="tilt-emoji">📐</span>
+        <span class="ti-text" id="tilt-desc">En attente…</span>
+      </div>
+      <div class="ti-row" id="tilt-quality-row" style="display:none">
+        <span class="ti-icon">📊</span>
+        <span class="ti-text" id="tilt-quality">—</span>
+      </div>
+    </div>
+
+    <div class="tilt-ref">
+      <div class="tilt-ref-title">Références</div>
+      <div class="tilt-ref-grid">
+        <span class="tilt-ref-item">➖ 0° plat</span>
+        <span class="tilt-ref-item">📐 20° faible</span>
+        <span class="tilt-ref-item">🏠 30-35° standard</span>
+        <span class="tilt-ref-item">⛰️ 45° forte</span>
+        <span class="tilt-ref-item">🧱 90° vertical</span>
+      </div>
+    </div>
+
+    <button class="btn btn-primary" id="btn-capture-tilt">📌 Capturer l'inclinaison</button>
+    <div class="captured" id="cap-tilt">
+      ✓ Capturée : <strong id="cap-tilt-val">—</strong>
+      <button class="btn-ghost" onclick="recapture('tilt')">↺</button>
+    </div>
+  </div>
+
+  <!-- RÉSUMÉ FINAL -->
+  <div class="summary" id="summary">
+    <div class="sum-title">✅ Mesures enregistrées</div>
+    <div class="sum-row"><span>🧭 Orientation</span><strong id="sum-az">—</strong></div>
+    <div class="sum-row"><span>📐 Inclinaison</span><strong id="sum-tilt">—</strong></div>
+    <div class="sum-row"><span>🎯 Score global</span><strong id="sum-score">—</strong></div>
+    <button class="btn btn-success" onclick="goAnalyze()">Analyser l'emplacement →</button>
+  </div>
+
+  <button class="btn btn-ghost" onclick="showTab('az');document.getElementById('start-screen').style.display='flex';document.getElementById('live-zone').style.display='none';stopCompass();" style="margin-top:4px">
+    ← Recommencer
+  </button>
+
+</div><!-- /live-zone -->
+
+<!-- PANNEAU DEBUG -->
+<div id="debug"></div>
+
+<script>
+// ═══════════════════════════════════════════════════════
+// ÉTAT
+// ═══════════════════════════════════════════════════════
+const state = {
+  heading:     null,
+  surfaceTilt: null,
+  latitude:    null,   // rempli par GPS
+  azCaptured:  false,
+  tiltCaptured: false,
+  az:    null,
+  tilt:  null,
+  azLbl: null,
+};
+
+let sensorHandler = null;
+let debugMode = false;
+let eventCount = 0;
+
+// ═══════════════════════════════════════════════════════
+// DEBUG
+// ═══════════════════════════════════════════════════════
+function dbg(msg) {
+  if (!debugMode) return;
+  const el = document.getElementById('debug');
+  el.innerHTML = msg + '<br>' + el.innerHTML;
+}
+
+document.getElementById('btn-debug-toggle').addEventListener('click', () => {
+  debugMode = !debugMode;
+  const el = document.getElementById('debug');
+  el.classList.toggle('show', debugMode);
+  document.getElementById('btn-debug-toggle').textContent = debugMode ? '🔧 Masquer le diagnostic' : '🔧 Afficher le diagnostic';
+});
+
+// ═══════════════════════════════════════════════════════
+// ONGLETS
+// ═══════════════════════════════════════════════════════
+function showTab(tab) {
+  document.getElementById('panel-az').classList.toggle('hidden', tab !== 'az');
+  document.getElementById('panel-tilt').classList.toggle('hidden', tab !== 'tilt');
+  document.getElementById('tab-az').classList.toggle('active', tab === 'az');
+  document.getElementById('tab-tilt').classList.toggle('active', tab === 'tilt');
+  if (tab === 'tilt') updateOptimalNeedle();
+}
+
+// ═══════════════════════════════════════════════════════
+// PERMISSION ET DÉMARRAGE
+// ═══════════════════════════════════════════════════════
+document.getElementById('btn-start').addEventListener('click', async () => {
+  // iOS 13+ : demande de permission explicite
+  if (typeof DeviceOrientationEvent !== 'undefined' &&
+      typeof DeviceOrientationEvent.requestPermission === 'function') {
+    try {
+      const perm = await DeviceOrientationEvent.requestPermission();
+      dbg('Permission iOS : ' + perm);
+      if (perm !== 'granted') {
+        alert('Permission refusée. Activez le capteur dans Réglages > Safari > Capteurs de mouvement.');
+        return;
+      }
+    } catch(e) {
+      dbg('Erreur permission : ' + e.message);
+      alert('Erreur permission capteur : ' + e.message);
+      return;
+    }
+  }
+
+  document.getElementById('start-screen').style.display = 'none';
+  document.getElementById('live-zone').style.display = 'flex';
+
+  startCompass();
+  startGPS();
+});
+
+// ═══════════════════════════════════════════════════════
+// BOUSSOLE — CŒUR DU MODULE
+// ═══════════════════════════════════════════════════════
+function startCompass() {
+  dbg('startCompass() appelé');
+
+  sensorHandler = function(e) {
+    eventCount++;
+
+    let heading = null;
+
+    // ── iOS : webkitCompassHeading (le plus fiable) ──
+    if (typeof e.webkitCompassHeading === 'number' && !isNaN(e.webkitCompassHeading)) {
+      heading = e.webkitCompassHeading;
+      dbg(`[${eventCount}] iOS webkitCompassHeading=${heading.toFixed(1)}°`);
+    }
+    // ── Android / Chrome : alpha ──
+    else if (e.alpha !== null && e.alpha !== undefined) {
+      heading = e.alpha;
+      dbg(`[${eventCount}] alpha=${heading.toFixed(1)}° abs=${e.absolute}`);
+    }
+    else {
+      dbg(`[${eventCount}] Événement sans données utiles`);
+      return;
+    }
+
+    // Normaliser 0-360
+    heading = ((heading % 360) + 360) % 360;
+    state.heading = heading;
+
+    // Inclinaison surface
+    const beta  = e.beta  ?? 0;
+    const gamma = e.gamma ?? 0;
+    const b = beta  * Math.PI / 180;
+    const g = gamma * Math.PI / 180;
+    const raw = Math.sqrt(Math.sin(b)*Math.sin(b) + Math.sin(g)*Math.sin(g));
+    state.surfaceTilt = Math.round(Math.min(90, Math.asin(Math.min(1, raw)) * 180 / Math.PI));
+
+    // Mettre à jour le badge statut
+    const badge = document.getElementById('sensor-status');
+    badge.textContent = '✅ Capteur actif';
+    badge.className = 'status-badge status-ok';
+
+    updateCompassUI();
+    updateTiltUI();
+  };
+
+  // Écouter les DEUX événements — priorité donnée par le if/else dans le handler
+  window.addEventListener('deviceorientationabsolute', sensorHandler, true);
+  window.addEventListener('deviceorientation', sensorHandler, true);
+
+  dbg('Listeners ajoutés sur deviceorientationabsolute + deviceorientation');
+
+  // Timeout si aucun événement après 4 secondes
+  setTimeout(() => {
+    if (eventCount === 0) {
+      dbg('⚠️ AUCUN ÉVÉNEMENT reçu après 4s !');
+      const badge = document.getElementById('sensor-status');
+      badge.textContent = '⚠️ Capteur non détecté';
+      badge.className = 'status-badge status-err';
+      // Afficher aide contextuelle
+      document.getElementById('debug').classList.add('show');
+      debugMode = true;
+      dbg('➡️ Vérifiez : HTTPS ? Permissions navigateur ? Android : activez "Capteurs de mouvement"');
+    }
+  }, 4000);
+}
+
+function stopCompass() {
+  if (sensorHandler) {
+    window.removeEventListener('deviceorientationabsolute', sensorHandler, true);
+    window.removeEventListener('deviceorientation', sensorHandler, true);
+    sensorHandler = null;
+  }
+  eventCount = 0;
+  state.heading = null;
+  state.surfaceTilt = null;
+}
+
+// ═══════════════════════════════════════════════════════
+// GPS
+// ═══════════════════════════════════════════════════════
+function startGPS() {
+  if (!navigator.geolocation) return;
+  navigator.geolocation.getCurrentPosition(
+    pos => {
+      state.latitude = pos.coords.latitude;
+      dbg(`GPS: ${pos.coords.latitude.toFixed(4)}°N ±${Math.round(pos.coords.accuracy)}m`);
+      updateOptimalNeedle();
+    },
+    err => dbg('GPS erreur: ' + err.message),
+    { enableHighAccuracy: true, timeout: 10000 }
+  );
+}
+
+// ═══════════════════════════════════════════════════════
+// MISE À JOUR UI BOUSSOLE
+// ═══════════════════════════════════════════════════════
+function updateCompassUI() {
+  const h = state.heading;
+  if (h === null) return;
+
+  // ★ ROTATION CADRAN via attribut SVG — seule méthode fiable sur mobile
+  // rotate(angle cx cy) : angle = -heading, centre = 120 120
+  const dial = document.getElementById('dial');
+  if (dial) {
+    const rot = (360 - h) % 360;  // -heading normalisé positif
+    dial.setAttribute('transform', `rotate(${rot.toFixed(2)} 120 120)`);
+  }
+
+  // Valeurs texte
+  document.getElementById('val-heading').textContent = Math.round(h) + '°';
+  document.getElementById('val-dir').textContent = headingToDir(h);
+
+  // Score qualité (basé sur orientation vers le Sud pour la France)
+  const score = orientationScore(h, state.latitude || 47);
+  const col = score >= 80 ? '#4aaa80' : score >= 60 ? '#a8d84a' : score >= 40 ? '#f5a623' : '#e74c3c';
+  document.getElementById('val-score').textContent = score + '/100';
+  document.getElementById('val-score').style.color = col;
+  document.getElementById('qbar-fill').style.width = score + '%';
+  document.getElementById('qbar-fill').style.background = col;
+  const qlabels = [[80,'✓ Excellente exposition !'],[60,'Bonne exposition'],[40,'Exposition correcte'],[0,'Exposition déconseillée']];
+  const qlabel = qlabels.find(([t]) => score >= t);
+  document.getElementById('qlabel').textContent = qlabel ? qlabel[1] : 'Déconseillée';
+  document.getElementById('qlabel').style.color = col;
+
+  // Arc qualité sur le SVG
+  updateScoreArc(score, col);
+}
+
+function updateScoreArc(score, col) {
+  const arc = document.getElementById('arc-quality');
+  if (!arc) return;
+  const cx = 120, cy = 120, R = 108;
+  const spread = score * 0.55; // max ~55° chaque côté quand score=100
+  if (spread < 2) { arc.setAttribute('opacity','0'); return; }
+  const a1 = (180 - spread) * Math.PI / 180;
+  const a2 = (180 + spread) * Math.PI / 180;
+  const x1 = (cx + R * Math.sin(a1)).toFixed(1);
+  const y1 = (cy - R * Math.cos(a1)).toFixed(1);
+  const x2 = (cx + R * Math.sin(a2)).toFixed(1);
+  const y2 = (cy - R * Math.cos(a2)).toFixed(1);
+  arc.setAttribute('d', `M ${x1} ${y1} A ${R} ${R} 0 0 1 ${x2} ${y2}`);
+  arc.setAttribute('stroke', col);
+  arc.setAttribute('opacity', '0.55');
+}
+
+// ═══════════════════════════════════════════════════════
+// MISE À JOUR UI INCLINOMÈTRE
+// ═══════════════════════════════════════════════════════
+function updateTiltUI() {
+  const t = state.surfaceTilt;
+  if (t === null) return;
+
+  // Aiguille : part du bas (145), pointe vers le haut selon l'angle
+  const CX = 150, CY = 145, R = 100;
+  const rad = t * Math.PI / 180;
+  const nx = (CX + R * Math.sin(rad)).toFixed(1);
+  const ny = (CY - R * Math.cos(rad)).toFixed(1);
+  const needle = document.getElementById('needle-tilt');
+  if (needle) { needle.setAttribute('x2', nx); needle.setAttribute('y2', ny); }
+
+  document.getElementById('tilt-val-big').textContent = t + '°';
+
+  // Emoji et label
+  const emoji = t <= 5 ? '➖' : t <= 25 ? '📐' : t <= 45 ? '🏠' : t <= 70 ? '⛰️' : '🧱';
+  const label = t <= 5  ? 'Surface horizontale' :
+                t <= 15 ? 'Légère pente' :
+                t <= 25 ? 'Toit faible pente' :
+                t <= 35 ? 'Toit standard ✓' :
+                t <= 45 ? 'Toit forte pente' :
+                t <= 65 ? 'Très inclinée' :
+                t <= 80 ? 'Quasi verticale' : 'Verticale (façade)';
+  document.getElementById('tilt-emoji').textContent = emoji;
+  document.getElementById('tilt-desc').textContent  = t + '° — ' + label;
+
+  // Qualité par rapport à l'optimal
+  const opt = optimalTilt(state.latitude || 47);
+  const diff = Math.abs(t - opt);
+  const tq = diff <= 5  ? {l:'Optimal ✓',  c:'#4aaa80'} :
+             diff <= 12 ? {l:'Excellent',   c:'#4aaa80'} :
+             diff <= 22 ? {l:'Bon',         c:'#f5a623'} :
+             diff <= 35 ? {l:'Acceptable',  c:'#f5a623'} :
+                          {l:'À corriger',  c:'#e74c3c'};
+  const qRow = document.getElementById('tilt-quality-row');
+  qRow.style.display = '';
+  document.getElementById('tilt-quality').textContent = 'Qualité : ' + tq.l;
+  document.getElementById('tilt-quality').style.color = tq.c;
+}
+
+function updateOptimalNeedle() {
+  const opt = optimalTilt(state.latitude || 47);
+  const CX = 150, CY = 145, R = 98;
+  const rad = opt * Math.PI / 180;
+  const nx = (CX + R * Math.sin(rad)).toFixed(1);
+  const ny = (CY - R * Math.cos(rad)).toFixed(1);
+  const el = document.getElementById('needle-opt');
+  if (el) { el.setAttribute('x2', nx); el.setAttribute('y2', ny); }
+}
+
+// ═══════════════════════════════════════════════════════
+// CAPTURES
+// ═══════════════════════════════════════════════════════
+document.getElementById('btn-capture-az').addEventListener('click', () => {
+  if (state.heading === null) { alert('Boussole non active — attendez quelques secondes'); return; }
+  state.az    = Math.round(state.heading);
+  state.azLbl = headingToDir(state.az);
+  state.azCaptured = true;
+  document.getElementById('cap-az').classList.add('show');
+  document.getElementById('cap-az-val').textContent = state.az + '° — ' + state.azLbl;
+  document.getElementById('btn-capture-az').style.display = 'none';
+  checkSummary();
+});
+
+document.getElementById('btn-capture-tilt').addEventListener('click', () => {
+  if (state.surfaceTilt === null) { alert('Posez le téléphone sur la surface'); return; }
+  state.tilt = state.surfaceTilt;
+  state.tiltCaptured = true;
+  document.getElementById('cap-tilt').classList.add('show');
+  document.getElementById('cap-tilt-val').textContent = state.tilt + '° — ' + tiltLabel(state.tilt);
+  document.getElementById('btn-capture-tilt').style.display = 'none';
+  checkSummary();
+});
+
+function recapture(which) {
+  if (which === 'az') {
+    state.azCaptured = false; state.az = null;
+    document.getElementById('cap-az').classList.remove('show');
+    document.getElementById('btn-capture-az').style.display = '';
+  } else {
+    state.tiltCaptured = false; state.tilt = null;
+    document.getElementById('cap-tilt').classList.remove('show');
+    document.getElementById('btn-capture-tilt').style.display = '';
+  }
+  document.getElementById('summary').classList.remove('show');
+}
+
+function checkSummary() {
+  if (!state.azCaptured || !state.tiltCaptured) return;
+  const azScore = orientationScore(state.az, state.latitude || 47);
+  const opt = optimalTilt(state.latitude || 47);
+  const diff = Math.abs(state.tilt - opt);
+  const tScore = diff<=5?100 : diff<=12?90 : diff<=22?75 : diff<=35?55 : 30;
+  const global = Math.round((azScore + tScore) / 2);
+  document.getElementById('sum-az').textContent    = state.az + '° — ' + state.azLbl;
+  document.getElementById('sum-tilt').textContent  = state.tilt + '° — ' + tiltLabel(state.tilt);
+  document.getElementById('sum-score').textContent = global + '/100';
+  document.getElementById('summary').classList.add('show');
+  // Sauvegarde dans localStorage pour l'app principale
+  try {
+    const d = JSON.parse(localStorage.getItem('heliospot_data_v1') || '{}');
+    d.surface = { azimuth: state.az, tilt: state.tilt, label: state.azLbl };
+    localStorage.setItem('heliospot_data_v1', JSON.stringify(d));
+  } catch(e) {}
+}
+
+function goAnalyze() {
+  window.location.href = 'index.html#analyze';
+}
+
+// ═══════════════════════════════════════════════════════
+// CALCULS SOLAIRES (embarqués — pas de dépendance solar.js)
+// ═══════════════════════════════════════════════════════
+function headingToDir(h) {
+  const d = ['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSO','SO','OSO','O','ONO','NO','NNO'];
+  return d[Math.round(((h%360)+360)%360 / 22.5) % 16];
+}
+
+function tiltLabel(t) {
+  if (t <= 5)  return 'Surface horizontale';
+  if (t <= 15) return 'Légère pente';
+  if (t <= 25) return 'Toit faible pente';
+  if (t <= 35) return 'Toit standard ✓';
+  if (t <= 45) return 'Toit forte pente';
+  if (t <= 65) return 'Très inclinée';
+  if (t <= 80) return 'Quasi verticale';
+  return 'Verticale (façade)';
+}
+
+function optimalTilt(lat) {
+  return Math.round(Math.abs(lat) * 0.76 + 3.1);
+}
+
+function orientationScore(az, lat) {
+  // Pour l'hémisphère Nord : orientation optimale = Sud = 180°
+  // Score = cos(écart à 180°) * 100, avec pénalité progressive
+  const optAz = lat >= 0 ? 180 : 0;
+  let diff = Math.abs(az - optAz);
+  if (diff > 180) diff = 360 - diff;
+  return Math.max(0, Math.round(100 * Math.cos(diff * 0.8 * Math.PI / 180)));
+}
+</script>
+
+</body>
+</html>
