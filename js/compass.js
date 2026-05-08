@@ -1,151 +1,130 @@
-// HelioSpot - Compass & Device Orientation Module (v2 - corrigé)
-//
-// LOGIQUE BOUSSOLE CORRECTE :
-// - Le CADRAN tourne, la LIGNE DE VISÉE est fixe en haut.
-// - Quand le téléphone pointe Est (heading=90°) → cadran tourne -90° pour afficher E en haut.
-// - dialRotation = -heading
-//
-// INCLINAISON SURFACE :
-// - Poser le téléphone PLAT SUR LA SURFACE à mesurer.
-// - tilt = arcsin(√(sin²β + sin²γ)) donne l'angle réel entre la surface et l'horizontal.
+// HelioSpot — Compass Module v3
+// Fonctionne sur iOS (webkitCompassHeading) et Android (alpha absolu ou relatif)
 
 const Compass = {
-  heading: null,
-  beta: null,
-  gamma: null,
+  heading:     null,
   surfaceTilt: null,
-  callbacks: [],
-  watching: false,
-  _handler: null,
-  _absHandler: null,
-  _usingAbsolute: false,
+  beta:        null,
+  gamma:       null,
+  callbacks:   [],
+  watching:    false,
+  _handler:    null,
 
   async requestPermission() {
     if (typeof DeviceOrientationEvent !== 'undefined' &&
         typeof DeviceOrientationEvent.requestPermission === 'function') {
       try {
-        const perm = await DeviceOrientationEvent.requestPermission();
-        return perm === 'granted';
-      } catch (e) { return false; }
+        const r = await DeviceOrientationEvent.requestPermission();
+        return r === 'granted';
+      } catch(e) { return false; }
     }
     return true;
   },
 
   start(callback) {
-    if (this.watching) {
-      if (!this.callbacks.includes(callback)) this.callbacks.push(callback);
-      return;
-    }
-    this.callbacks.push(callback);
+    if (!this.callbacks.includes(callback)) this.callbacks.push(callback);
+    if (this.watching) return;
     this.watching = true;
 
-    this._absHandler = (e) => {
-      if (e.alpha === null) return;
-      this._usingAbsolute = true;
-      this._processEvent(e, false);
-    };
-
+    // Un seul handler — écoute les deux events, priorité au webkitCompassHeading
     this._handler = (e) => {
-      if (this._usingAbsolute) return;
-      if (e.alpha === null) return;
-      this._processEvent(e, true);
+      let heading = null;
+
+      // iOS : webkitCompassHeading = cap vrai depuis le Nord (0=N, 90=E, 180=S, 270=O)
+      if (typeof e.webkitCompassHeading === 'number' && !isNaN(e.webkitCompassHeading)) {
+        heading = e.webkitCompassHeading;
+      }
+      // Android absolute : alpha=0 quand pointé vers le Nord géographique
+      else if (e.absolute === true && e.alpha !== null) {
+        heading = e.alpha;
+      }
+      // Android fallback (relatif au démarrage) : on l'utilise quand même
+      else if (e.alpha !== null) {
+        heading = e.alpha;
+      }
+
+      if (heading === null) return;
+
+      this.heading     = ((heading % 360) + 360) % 360;
+      this.beta        = e.beta  ?? null;
+      this.gamma       = e.gamma ?? null;
+      this.surfaceTilt = this._tilt(e.beta, e.gamma);
+
+      this.callbacks.forEach(cb => cb({
+        heading:     this.heading,
+        surfaceTilt: this.surfaceTilt,
+        beta:        this.beta,
+        gamma:       this.gamma,
+        absolute:    e.absolute === true || typeof e.webkitCompassHeading === 'number',
+      }));
     };
 
-    window.addEventListener('deviceorientationabsolute', this._absHandler, true);
-    window.addEventListener('deviceorientation', this._handler, true);
+    // Écouter les deux — le navigateur n'enverra que ce qu'il supporte
+    window.addEventListener('deviceorientationabsolute', this._handler, true);
+    window.addEventListener('deviceorientation',         this._handler, true);
   },
 
-  _processEvent(e, isRelative) {
-    let heading = null;
-
-    if (e.webkitCompassHeading !== undefined && e.webkitCompassHeading !== null) {
-      heading = e.webkitCompassHeading;
-    } else if (e.alpha !== null) {
-      heading = e.alpha;
+  stop() {
+    if (this._handler) {
+      window.removeEventListener('deviceorientationabsolute', this._handler, true);
+      window.removeEventListener('deviceorientation',         this._handler, true);
     }
-    if (heading === null) return;
-
-    heading = ((heading % 360) + 360) % 360;
-    this.heading     = heading;
-    this.beta        = e.beta;
-    this.gamma       = e.gamma;
-    this.surfaceTilt = this._computeSurfaceTilt(e.beta, e.gamma);
-
-    this.callbacks.forEach(cb => cb({
-      heading:     this.heading,
-      beta:        this.beta,
-      gamma:       this.gamma,
-      surfaceTilt: this.surfaceTilt,
-      isRelative,
-      accuracy:    e.webkitCompassAccuracy ?? null
-    }));
+    this.watching  = false;
+    this.callbacks = [];
+    this._handler  = null;
   },
 
-  _computeSurfaceTilt(beta, gamma) {
-    if (beta === null || gamma === null) return null;
-    const b = beta  * Math.PI / 180;
-    const g = gamma * Math.PI / 180;
+  // Inclinaison de la surface quand le téléphone est posé à plat dessus
+  _tilt(beta, gamma) {
+    if (beta === null || beta === undefined) return null;
+    if (gamma === null || gamma === undefined) return null;
+    const b   = beta  * Math.PI / 180;
+    const g   = gamma * Math.PI / 180;
     const raw = Math.sqrt(Math.sin(b)*Math.sin(b) + Math.sin(g)*Math.sin(g));
-    const tilt = Math.asin(Math.min(1, raw)) * 180 / Math.PI;
-    return Math.round(Math.min(90, Math.max(0, tilt)));
+    return Math.round(Math.min(90, Math.asin(Math.min(1, raw)) * 180 / Math.PI));
   },
 
-  getDialRotation() {
-    if (this.heading === null) return 0;
-    return -this.heading;
+  label(h) {
+    if (h === null) return '—';
+    const d = ['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSO','SO','OSO','O','ONO','NO','NNO'];
+    return d[Math.round(((h%360)+360)%360 / 22.5) % 16];
   },
 
-  compassLabel(heading) {
-    if (heading === null) return '—';
-    const dirs = ['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSO','SO','OSO','O','ONO','NO','NNO'];
-    return dirs[Math.round(((heading % 360) + 360) % 360 / 22.5) % 16];
-  },
-
-  getTiltLabel(tilt) {
-    if (tilt === null) return '—';
-    if (tilt <=  5) return 'Horizontale (plat)';
-    if (tilt <= 15) return 'Légèrement inclinée';
-    if (tilt <= 25) return 'Toit faible pente';
-    if (tilt <= 35) return 'Toit standard';
-    if (tilt <= 45) return 'Toit forte pente';
-    if (tilt <= 60) return 'Très inclinée';
-    if (tilt <= 80) return 'Quasi verticale';
+  tiltLabel(t) {
+    if (t === null) return '—';
+    if (t <=  5) return 'Surface horizontale';
+    if (t <= 15) return 'Légère pente';
+    if (t <= 25) return 'Toit faible pente';
+    if (t <= 35) return 'Toit standard ✓';
+    if (t <= 45) return 'Toit forte pente';
+    if (t <= 65) return 'Très inclinée';
+    if (t <= 80) return 'Quasi verticale';
     return 'Verticale (façade)';
   },
 
-  getTiltEmoji(tilt) {
-    if (tilt === null) return '❓';
-    if (tilt <=  5) return '➖';
-    if (tilt <= 25) return '📐';
-    if (tilt <= 45) return '🏠';
-    if (tilt <= 70) return '⛰️';
-    return '🧱';
-  },
-
-  getTiltQuality(tilt, latitude) {
-    if (tilt === null) return null;
-    const opt = (typeof Solar !== 'undefined') ? Solar.optimalTilt(latitude || 47) : 35;
+  tiltQuality(tilt, lat) {
+    const opt  = (typeof Solar !== 'undefined') ? Solar.optimalTilt(lat || 47) : 35;
     const diff = Math.abs(tilt - opt);
-    if (diff <=  5) return { label:'Optimal ✓',  color:'#7ecfab', score:100 };
-    if (diff <= 10) return { label:'Excellent',   color:'#7ecfab', score: 90 };
-    if (diff <= 20) return { label:'Bon',         color:'#a8d84a', score: 75 };
-    if (diff <= 30) return { label:'Acceptable',  color:'#f5a623', score: 55 };
-    return             { label:'À corriger',   color:'#e74c3c', score: 30 };
-  }
+    if (diff <=  5) return { label:'Optimal ✓',  color:'#7ecfab' };
+    if (diff <= 12) return { label:'Excellent',   color:'#7ecfab' };
+    if (diff <= 22) return { label:'Bon',         color:'#f5a623' };
+    if (diff <= 35) return { label:'Acceptable',  color:'#f59623' };
+    return             { label:'À corriger',   color:'#e74c3c' };
+  },
 };
 
+// ── GeoLocation ─────────────────────────────────────────
 const GeoLocation = {
   position: null,
-  watching: false,
-  watchId: null,
+  watchId:  null,
 
   async getOnce() {
     return new Promise((resolve, reject) => {
-      if (!navigator.geolocation) { reject(new Error('Géolocalisation non supportée')); return; }
+      if (!navigator.geolocation) { reject(new Error('GPS non supporté')); return; }
       navigator.geolocation.getCurrentPosition(
-        pos => {
-          this.position = { latitude: pos.coords.latitude, longitude: pos.coords.longitude,
-                            accuracy: pos.coords.accuracy, altitude: pos.coords.altitude };
+        p => {
+          this.position = { latitude: p.coords.latitude, longitude: p.coords.longitude,
+                            accuracy: p.coords.accuracy, altitude: p.coords.altitude };
           resolve(this.position);
         },
         err => reject(err),
@@ -154,25 +133,11 @@ const GeoLocation = {
     });
   },
 
-  watch(callback) {
-    if (!navigator.geolocation) return;
-    this.watchId = navigator.geolocation.watchPosition(
-      pos => {
-        this.position = { latitude: pos.coords.latitude, longitude: pos.coords.longitude,
-                          accuracy: pos.coords.accuracy, altitude: pos.coords.altitude };
-        callback(this.position);
-      },
-      err => console.warn('GPS error:', err),
-      { enableHighAccuracy: true, maximumAge: 10000 }
-    );
-    this.watching = true;
-  },
-
   stop() {
     if (this.watchId) navigator.geolocation.clearWatch(this.watchId);
-    this.watching = false;
+    this.watchId = null;
   }
 };
 
-window.Compass = Compass;
+window.Compass    = Compass;
 window.GeoLocation = GeoLocation;
